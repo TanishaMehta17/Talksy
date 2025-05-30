@@ -48,12 +48,13 @@ class ChatService {
   Future<List<Map<String, dynamic>>> getMessages(String senderId, String receiverId) async {
     try {
       final response = await http.get(Uri.parse(
-        '$uri/messages?senderId=$senderId&receiverId=$receiverId',
+        '$uri/api/chat/messages?senderId=$senderId&receiverId=$receiverId',
       ));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((msg) => {
+          'id': msg['id'],
           'text': msg['content'],
           'sender': msg['senderId'],
           'receiver': msg['receiverId'],
@@ -86,37 +87,7 @@ class ChatService {
   }
 }
 
-Future<void> searchUser({
-  required BuildContext context,
-  required String senderId,
-  required String receiverId,
-}) async {
-  try {
-    final response = await http.post(
-      Uri.parse('$uri/api/chat/new-chat'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: json.encode({
-        'senderId': senderId,
-        'receiverId': receiverId,
-      }),
-    );
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(data['message'] ?? 'Chat initiated')),
-      );
-    } else {
-      throw Exception('Failed to start new chat');
-    }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error: ${e.toString()}')),
-    );
-  }
-}
 Future<void> editMessage({
   required BuildContext context,
   required String messageId,
@@ -175,10 +146,10 @@ Future<void> deleteMessage({
     );
   }
 }
-Future<Map<String, int>> getUnreadCount() async {
+Future<Map<String, int>> getUnreadCount(String userId) async {
   try {
     final response = await http.get(
-      Uri.parse('$uri/api/chat/unread-count'),
+      Uri.parse('$uri/api/chat/unread-count?userId=$userId'),
       headers: {
         'Content-Type': 'application/json',
       },
@@ -199,6 +170,7 @@ Future<Map<String, int>> getUnreadCount() async {
     return {};
   }
 }
+
 Future<bool> markMessagesAsRead({
   required String senderId,
   required String receiverId,
@@ -249,5 +221,32 @@ Future<List<dynamic>> getRecentMessages(String userId) async {
   }
 }
 
+Future<Map<String, dynamic>?> searchUserByEmail({
+  required BuildContext context,
+  required String senderId,
+  required String receiverEmail,
+}) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$uri/api/chat/new-chat'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'senderId': senderId,
+        'receiverEmail': receiverEmail,
+      }),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return data['chat'];
+    } else {
+      // Handle error
+      return null;
+    }
+  } catch (e) {
+    // Handle exception
+    return null;
+  }
+}
 
 }

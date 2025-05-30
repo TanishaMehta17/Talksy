@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:talksy/providers/userProvider.dart';
@@ -23,7 +24,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Use addPostFrameCallback to safely access context in initState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       currentUserId = Provider.of<UserProvider>(context, listen: false).user.id;
       fetchChats();
@@ -32,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> fetchChats() async {
     final chats = await chatService.getRecentMessages(currentUserId);
-    final unread = await chatService.getUnreadCount();
+   final unread = await chatService.getUnreadCount(currentUserId);
     setState(() {
       recentChats = chats;
       unreadMap = unread;
@@ -40,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void onChatTap(String name, String id) async {
+    print("Tapping on chat with $name and id $id");
     await chatService.markMessagesAsRead(
       senderId: id,
       receiverId: currentUserId,
@@ -56,13 +57,46 @@ class _HomeScreenState extends State<HomeScreen> {
     ).then((_) => fetchChats());
   }
 
-  void onSearch(String userId) async {
-    await chatService.searchUser(
+  void onSearchByEmail(String email) async {
+    final response = await chatService.searchUserByEmail(
       context: context,
       senderId: currentUserId,
-      receiverId: userId,
+      receiverEmail: email,
     );
-    fetchChats();
+
+    if (response != null && response['chat'] != null) {
+      final chat = response['chat'];
+      final name = chat['receiverName'];
+      final id = chat['receiverId'];
+
+      // Add the searched chat at the top of the recentChats list
+      setState(() {
+        recentChats.insert(0, {
+          'sender': {'_id': currentUserId},
+          'receiver': {
+            '_id': id,
+            'username': name,
+          },
+          'content': "Say hi 👋",
+        });
+      });
+     
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            currentUserId: currentUserId,
+            receiverId: id,
+            receiverName: name,
+          ),
+        ),
+      ).then((_) => fetchChats());
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No user found with this email')),
+      );
+    }
+
     searchController.clear();
   }
 
@@ -77,10 +111,10 @@ class _HomeScreenState extends State<HomeScreen> {
             child: TextField(
               controller: searchController,
               decoration: InputDecoration(
-                hintText: 'Search user ID...',
+                hintText: 'Search by email...',
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.search),
-                  onPressed: () => onSearch(searchController.text),
+                  onPressed: () => onSearchByEmail(searchController.text),
                 ),
               ),
             ),
@@ -90,18 +124,17 @@ class _HomeScreenState extends State<HomeScreen> {
               itemCount: recentChats.length,
               itemBuilder: (context, index) {
                 final chat = recentChats[index];
-                final isSender = chat['sender']['_id'] == currentUserId;
-                final name = isSender
-                    ? chat['receiver']['username']
-                    : chat['sender']['username'];
-                final id = isSender
-                    ? chat['receiver']['_id']
-                    : chat['sender']['_id'];
+                final isCurrentUserSender =
+                    chat['sender']['id'] == currentUserId;
+                final otherUser =
+                    isCurrentUserSender ? chat['receiver'] : chat['sender'];
+                final name = otherUser['username'];
+                final id = otherUser['id'];
                 final unreadCount = unreadMap[id] ?? 0;
 
                 return ListTile(
                   title: Text(name),
-                  subtitle: Text(chat['content']),
+                  subtitle: Text(chat['content'] ?? ""),
                   trailing: unreadCount > 0
                       ? CircleAvatar(
                           radius: 12,

@@ -18,9 +18,9 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _passwordVisible = false;
   final AuthService authService = AuthService();
   final TextEditingController emailController =
-      TextEditingController(text: 'tanay66@gmail.com');
+      TextEditingController(text: 'tanay@gmail.com');
   final TextEditingController passwordController =
-      TextEditingController(text: '1234567');
+      TextEditingController(text: '123456');
 
   @override
   void dispose() {
