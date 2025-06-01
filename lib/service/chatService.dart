@@ -238,7 +238,7 @@ Future<Map<String, dynamic>?> searchUserByEmail({
 
     if (response.statusCode == 200 || response.statusCode == 201) {
       final data = jsonDecode(response.body);
-      return data['chat'];
+      return {'chat': data['chat']};
     } else {
       // Handle error
       return null;

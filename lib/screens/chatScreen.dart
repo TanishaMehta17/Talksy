@@ -1,7 +1,8 @@
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:talksy/common/global_varibale.dart';
 import 'package:talksy/service/chatService.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class ChatScreen extends StatefulWidget {
   final String currentUserId;
@@ -24,25 +25,56 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> messages = [];
   final TextEditingController messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  IO.Socket? socket;
 
   @override
   void initState() {
     super.initState();
+    initSocket();
     loadMessages();
   }
 
-  void loadMessages() async {
-    final msgs = await chatService.getMessages(widget.currentUserId, widget.receiverId);
-    print("Loaded messages: $msgs");
-     if (!mounted) return;
-  setState(() {
-    messages = List<Map<String, dynamic>>.from(msgs); // Ensure a new list reference
-  });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  void initSocket() {
+    socket = IO.io(
+      '$uri', // Replace with your actual backend host
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .enableAutoConnect()
+          .setQuery({
+            'userId': widget.currentUserId,
+          })
+          .build(),
+    );
+
+    socket!.connect();
+
+    socket!.onConnect((_) {
+      print("Connected to socket server");
+      socket!.emit("join", {'userId': widget.currentUserId});
+    });
+
+    socket!.on("receiveMessage", (data) {
+      print("Received via socket: $data");
+      if (data['sender'] == widget.receiverId) {
+        setState(() {
+          messages.add(Map<String, dynamic>.from(data));
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      }
+    });
+
+    socket!.onDisconnect((_) => print("Disconnected from socket"));
   }
 
-
-
+  void loadMessages() async {
+    final msgs =
+        await chatService.getMessages(widget.currentUserId, widget.receiverId);
+    if (!mounted) return;
+    setState(() {
+      messages = List<Map<String, dynamic>>.from(msgs);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
 
   void sendMessage() {
     final text = messageController.text.trim();
@@ -53,13 +85,29 @@ class _ChatScreenState extends State<ChatScreen> {
       senderId: widget.currentUserId,
       receiverId: widget.receiverId,
       content: text,
-      callback: (success, _) {
-        if (success) {
-          messageController.clear();
-          loadMessages();
-        }
-      },
+     
+      callback: (success, sentMsg) {
+  if (success && sentMsg != null) {
+    messageController.clear();
+    // Normalize key for UI logic
+    sentMsg['sender'] = sentMsg['senderId']; // This line is important!
+    setState(() {
+      messages.add(Map<String, dynamic>.from(sentMsg));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+
+    socket?.emit("sendMessage", {
+      'id': sentMsg['id'],
+      'sender': widget.currentUserId,
+      'receiver': widget.receiverId,
+      'text': sentMsg['content'],
+      'createdAt': sentMsg['createdAt'],
+    });
+  }
+},
+
     );
+    
   }
 
   void _scrollToBottom() {
@@ -101,7 +149,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _editMessage(Map<String, dynamic> msg) {
-    final TextEditingController editController = TextEditingController(text: msg['text']);
+    final TextEditingController editController =
+        TextEditingController(text: msg['text']);
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -118,8 +167,6 @@ class _ChatScreenState extends State<ChatScreen> {
           TextButton(
             onPressed: () async {
               final newText = editController.text.trim();
-              print("Editing message: $newText");
-              print("Message ID: ${msg['id']}");
               if (newText.isEmpty) return;
               Navigator.pop(context);
               await chatService.editMessage(
@@ -137,12 +184,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _deleteMessage(Map<String, dynamic> msg) async {
-    print("Deleting message with ID: ${msg['id']}");
+    print(msg['id']);
     await chatService.deleteMessage(
       context: context,
       messageId: msg['id'],
     );
     loadMessages();
+  }
+
+  @override
+  void dispose() {
+    socket?.disconnect();
+    socket?.dispose();
+    messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -154,17 +210,20 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
-              reverse: false,
               itemCount: messages.length,
               itemBuilder: (context, index) {
                 final msg = messages[index];
+                print(msg['sender']);
                 final isMine = msg['sender'] == widget.currentUserId;
                 return GestureDetector(
-                  onLongPress: isMine ? () => _showMessageOptions(context, msg) : null,
+                  onLongPress:
+                      isMine ? () => _showMessageOptions(context, msg) : null,
                   child: Align(
-                    alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                    alignment:
+                        isMine ? Alignment.centerRight : Alignment.centerLeft,
                     child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      margin: const EdgeInsets.symmetric(
+                          vertical: 4, horizontal: 8),
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: isMine ? Colors.blue : Colors.grey.shade300,
@@ -174,12 +233,14 @@ class _ChatScreenState extends State<ChatScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            msg['text'],
-                            style: TextStyle(color: isMine ? Colors.white : Colors.black),
+                           msg['text'] ?? msg['content'] ,
+                            style: TextStyle(
+                                color: isMine ? Colors.white : Colors.black),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            DateFormat.Hm().format(DateTime.parse(msg['createdAt'])),
+                            DateFormat.Hm()
+                                .format(DateTime.parse(msg['createdAt'])),
                             style: TextStyle(
                               fontSize: 10,
                               color: isMine ? Colors.white70 : Colors.black54,
@@ -202,7 +263,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: messageController,
                     decoration: InputDecoration(
                       hintText: 'Type a message...',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ),

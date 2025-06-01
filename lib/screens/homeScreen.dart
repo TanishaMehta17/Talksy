@@ -57,48 +57,38 @@ class _HomeScreenState extends State<HomeScreen> {
     ).then((_) => fetchChats());
   }
 
-  void onSearchByEmail(String email) async {
-    final response = await chatService.searchUserByEmail(
-      context: context,
-      senderId: currentUserId,
-      receiverEmail: email,
-    );
+  
+void onSearchByEmail(String email) async {
+  final response = await chatService.searchUserByEmail(
+    context: context,
+    senderId: currentUserId,
+    receiverEmail: email,
+  );
 
-    if (response != null && response['chat'] != null) {
-      final chat = response['chat'];
-      final name = chat['receiverName'];
-      final id = chat['receiverId'];
+  if (response != null && response['chat'] != null) {
+    final chat = response['chat'];
+    final name = chat['receiverName'];
+    final id = chat['receiverId'];
 
-      // Add the searched chat at the top of the recentChats list
-      setState(() {
-        recentChats.insert(0, {
-          'sender': {'_id': currentUserId},
-          'receiver': {
-            '_id': id,
-            'username': name,
-          },
-          'content': "Say hi 👋",
-        });
-      });
-     
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ChatScreen(
-            currentUserId: currentUserId,
-            receiverId: id,
-            receiverName: name,
-          ),
+    await fetchChats(); // FIX: Refresh full chat list from backend
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          currentUserId: currentUserId,
+          receiverId: id,
+          receiverName: name,
         ),
-      ).then((_) => fetchChats());
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No user found with this email')),
-      );
-    }
-
-    searchController.clear();
+      ),
+    ).then((_) => fetchChats());
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No user found with this email')),
+    );
   }
+
+  searchController.clear();
+}
 
   @override
   Widget build(BuildContext context) {
